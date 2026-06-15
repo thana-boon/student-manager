@@ -1,0 +1,24 @@
+# Environment / secrets
+.env
+.env.*
+!.env.example
+
+# Logs และไฟล์ที่ระบบสร้าง
+storage/logs/*.log
+storage/cache/
+
+# Editor / IDE
+.vscode/
+.idea/
+
+# OS
+Thumbs.db
+Desktop.ini
+.DS_Store
+
+# Dependencies (เผื่อใช้ composer ในอนาคต)
+/vendor/
+
+# Uploads / temp
+*.tmp
+*.bak
