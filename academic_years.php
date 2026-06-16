@@ -65,9 +65,13 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && $error === '') {
                 throw new RuntimeException('ข้อมูลไม่ถูกต้อง');
             }
 
+          // Update is_active flag in students_db (source of truth)
+          academic_years_set_current($pdo, $id);
+          app_log('academic_year.set_current', ['id' => $id]);
+
           settings_set_int($pdoLocal, 'current_academic_year_id', $id);
           app_log('academic_year.set_current_local', ['id' => $id]);
-          $flash = 'ตั้งเป็นปีปัจจุบัน (เฉพาะระบบนี้) แล้ว';
+          $flash = 'ตั้งเป็นปีปัจจุบันแล้ว';
         }
 
         if ($action === 'delete') {
@@ -224,7 +228,7 @@ layout_topbar('academic_years');
     </div>
 
     <div class="border-t border-slate-100 px-5 py-3 text-xs text-slate-400">
-      ข้อมูลจากฐาน <span class="font-mono text-slate-500">school_app</span> · "ปีปัจจุบัน" บันทึกใน <span class="font-mono text-slate-500">student_manager</span>
+      ข้อมูลจากฐาน <span class="font-mono text-slate-500">students_db</span> · "ปีปัจจุบัน" บันทึกใน <span class="font-mono text-slate-500">student_manager</span>
     </div>
   </section>
 </main>

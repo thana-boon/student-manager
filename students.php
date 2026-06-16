@@ -178,7 +178,7 @@ layout_topbar('students');
   <div class="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
     <div>
       <h2 class="text-2xl font-bold tracking-tight text-slate-900">นักเรียน</h2>
-      <p class="mt-1 text-sm text-slate-500">จัดการข้อมูลนักเรียนจากฐาน <span class="font-mono text-slate-600">school_app</span> ตามปีการศึกษาปัจจุบัน</p>
+      <p class="mt-1 text-sm text-slate-500">จัดการข้อมูลนักเรียนจากฐาน <span class="font-mono text-slate-600">students_db</span> ตามปีการศึกษาปัจจุบัน</p>
     </div>
 
     <div class="flex flex-wrap items-center gap-2">
@@ -375,7 +375,7 @@ layout_topbar('students');
     </div>
 
     <div class="border-t border-slate-100 px-5 py-3 text-xs text-slate-400">
-      ข้อมูลถูกอ่าน/เขียนในฐาน <span class="font-mono text-slate-500">school_app</span> (ตาราง students) · ปีปัจจุบันเก็บใน <span class="font-mono text-slate-500">student_manager</span>
+      ข้อมูลถูกอ่าน/เขียนในฐาน <span class="font-mono text-slate-500">students_db</span> (ตาราง students) · ปีปัจจุบันเก็บใน <span class="font-mono text-slate-500">student_manager</span>
     </div>
   </section>
 </main>

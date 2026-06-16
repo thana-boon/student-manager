@@ -41,18 +41,18 @@ return [
     'db' => [
         'host' => env('DB_HOST', '127.0.0.1'),
         'port' => (int)env('DB_PORT', '3306'),
-        // IMPORTANT: ใช้ฐานข้อมูลนี้เท่านั้น เพื่อไม่ไปยุ่งกับ school_app
+        // IMPORTANT: ใช้ฐานข้อมูลนี้เท่านั้น เพื่อไม่ไปยุ่งกับ students_db
         'name' => env('DB_NAME', 'student_manager'),
         'user' => env('DB_USER', 'root'),
         'pass' => env('DB_PASS', ''),
         'charset' => env('DB_CHARSET', 'utf8mb4'),
     ],
 
-    // Existing school database (ใช้สำหรับ academic_year และ student)
+    // School database (ใช้สำหรับ academic_year และ student)
     'db_school' => [
         'host' => env('DB_SCHOOL_HOST', '127.0.0.1'),
         'port' => (int)env('DB_SCHOOL_PORT', '3306'),
-        'name' => env('DB_SCHOOL_NAME', 'school_app'),
+        'name' => env('DB_SCHOOL_NAME', 'students_db'),
         'user' => env('DB_SCHOOL_USER', 'root'),
         'pass' => env('DB_SCHOOL_PASS', ''),
         'charset' => env('DB_SCHOOL_CHARSET', 'utf8mb4'),
@@ -65,10 +65,10 @@ return [
 
     // Optional overrides for school schema
     'school' => [
-        // หากตารางปีการศึกษาใน school_app ชื่อไม่ใช่ academic_years ให้แก้ตรงนี้
+        // หากตารางปีการศึกษาใน students_db ชื่อไม่ใช่ academic_years ให้แก้ตรงนี้
         'academic_years_table' => env('SCHOOL_ACADEMIC_YEARS_TABLE', 'academic_years'),
 
-        // หากตารางนักเรียนใน school_app ชื่อไม่ใช่ students ให้แก้ตรงนี้
+        // หากตารางนักเรียนใน students_db ชื่อไม่ใช่ students ให้แก้ตรงนี้
         'students_table' => env('SCHOOL_STUDENTS_TABLE', 'students'),
     ],
 ];

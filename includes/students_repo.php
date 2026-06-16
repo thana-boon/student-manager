@@ -48,7 +48,7 @@ function students_detect_columns(PDO $pdo): array
     }
 
     if (!$cols || count($cols) === 0) {
-        throw new RuntimeException('ไม่พบตาราง students ใน school_app (ตรวจสอบชื่อ table ใน config.php)');
+        throw new RuntimeException('ไม่พบตาราง students ใน students_db (ตรวจสอบชื่อ table ใน config.php)');
     }
 
     $cols = array_map('strval', $cols);
@@ -370,7 +370,7 @@ function students_ensure_optional_columns(PDO $pdo): void
 function students_require_table(PDO $pdo): array
 {
     if (!students_table_exists($pdo)) {
-        throw new RuntimeException('ไม่พบตาราง students ในฐานข้อมูล school_app (ตรวจสอบชื่อ table ใน config.php)');
+        throw new RuntimeException('ไม่พบตาราง students ในฐานข้อมูล students_db (ตรวจสอบชื่อ table ใน config.php)');
     }
 
     // Ensure optional fields exist before detecting columns/mapping.

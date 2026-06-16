@@ -33,7 +33,7 @@ function ay_detect_columns(PDO $pdo): array
     $cols = $stmt->fetchAll(PDO::FETCH_COLUMN);
 
     if (!$cols || count($cols) === 0) {
-        throw new RuntimeException('ไม่พบตารางปีการศึกษาใน school_app (ตรวจสอบชื่อ table ใน config.php)');
+        throw new RuntimeException('ไม่พบตารางปีการศึกษาใน students_db (ตรวจสอบชื่อ table ใน config.php)');
     }
 
     $cols = array_map('strval', $cols);
@@ -42,6 +42,7 @@ function ay_detect_columns(PDO $pdo): array
     $idColCandidates = ['id', 'academic_year_id', 'year_id'];
     $nameColCandidates = ['name', 'year', 'academic_year', 'title'];
     $currentColCandidates = ['is_current', 'current', 'is_active', 'active'];
+    $yearNumberCandidates = ['year_be', 'year_no', 'be_year', 'academic_year_be', 'buddhist_year', 'year'];
     $updatedAtCandidates = ['updated_at', 'update_at', 'modified_at', 'updated'];
     $createdAtCandidates = ['created_at', 'create_at', 'created'];
 
@@ -60,6 +61,13 @@ function ay_detect_columns(PDO $pdo): array
     $updatedAt = $pick($updatedAtCandidates);
     $createdAt = $pick($createdAtCandidates);
 
+    // Numeric year column (e.g. year_be). Must be a separate column from the
+    // display name; otherwise we'd overwrite the title with a bare number.
+    $yearNumberCol = $pick($yearNumberCandidates);
+    if ($yearNumberCol !== null && $yearNumberCol === $nameCol) {
+        $yearNumberCol = null;
+    }
+
     if ($idCol === null || $nameCol === null) {
         throw new RuntimeException('โครงสร้างตารางปีการศึกษาไม่รองรับ (ต้องมี id และชื่อปีการศึกษา)');
     }
@@ -69,6 +77,7 @@ function ay_detect_columns(PDO $pdo): array
         'id' => $idCol,
         'name' => $nameCol,
         'is_current' => $currentCol,
+        'year_number' => $yearNumberCol,
         'created_at' => $createdAt,
         'updated_at' => $updatedAt,
         'columns' => $cols,
@@ -85,7 +94,7 @@ function academic_years_table_exists(PDO $pdo): bool
 function academic_years_require_table(PDO $pdo): array
 {
     if (!academic_years_table_exists($pdo)) {
-        throw new RuntimeException('ไม่พบตารางปีการศึกษาในฐานข้อมูล school_app (ตรวจสอบชื่อ table ใน config.php)');
+        throw new RuntimeException('ไม่พบตารางปีการศึกษาในฐานข้อมูล students_db (ตรวจสอบชื่อ table ใน config.php)');
     }
     return ay_detect_columns($pdo);
 }
@@ -135,19 +144,47 @@ function academic_years_has_current(PDO $pdo): bool
     return (int)$stmt->fetchColumn() > 0;
 }
 
+function academic_years_year_number_from_name(string $name): ?int
+{
+    // Prefer a 4-digit year (e.g. 2569 / 2026); fall back to any run of digits.
+    if (preg_match('/(\d{4})/u', $name, $mm)) {
+        return (int)$mm[1];
+    }
+    if (preg_match('/(\d+)/u', $name, $mm)) {
+        return (int)$mm[1];
+    }
+    return null;
+}
+
 function academic_years_create(PDO $pdo, string $name): int
 {
     $m = academic_years_require_table($pdo);
     $t = sql_ident((string)$m['table']);
-    $nameCol = sql_ident((string)$m['name']);
+
+    $cols = [sql_ident((string)$m['name'])];
+    $vals = [':n'];
+    $params = [':n' => $name];
 
     if ($m['is_current']) {
-        $cur = sql_ident((string)$m['is_current']);
-        $stmt = $pdo->prepare("INSERT INTO $t ($nameCol, $cur) VALUES (:n, 0)");
-    } else {
-        $stmt = $pdo->prepare("INSERT INTO $t ($nameCol) VALUES (:n)");
+        $cols[] = sql_ident((string)$m['is_current']);
+        $vals[] = '0';
     }
-    $stmt->execute([':n' => $name]);
+
+    // Schema may have a NOT NULL numeric year column (e.g. year_be) with no
+    // default. Derive it from the entered name so it isn't silently stored as 0.
+    if ($m['year_number']) {
+        $yearNo = academic_years_year_number_from_name($name);
+        if ($yearNo === null) {
+            throw new RuntimeException('กรุณาระบุปีการศึกษาเป็นตัวเลข เช่น 2569 หรือ 2026');
+        }
+        $cols[] = sql_ident((string)$m['year_number']);
+        $vals[] = ':yb';
+        $params[':yb'] = $yearNo;
+    }
+
+    $sql = 'INSERT INTO ' . $t . ' (' . implode(', ', $cols) . ') VALUES (' . implode(', ', $vals) . ')';
+    $stmt = $pdo->prepare($sql);
+    $stmt->execute($params);
     return (int)$pdo->lastInsertId();
 }
 
