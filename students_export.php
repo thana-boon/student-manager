@@ -37,7 +37,7 @@ try {
         throw new RuntimeException('ไม่พบปีการศึกษาที่ตั้งไว้');
     }
 
-    $rows = students_export_rows($pdoSchool, (int)$currentYear['id'], (string)$currentYear['name']);
+    $rows = students_export_form_rows($pdoSchool, (int)$currentYear['id'], (string)$currentYear['name']);
 
     $filename = 'students_' . preg_replace('/[^0-9a-zA-Z_-]+/', '_', (string)$currentYear['name']) . '.csv';
 
@@ -54,20 +54,30 @@ try {
         throw new RuntimeException('ไม่สามารถสร้างไฟล์ส่งออกได้');
     }
 
-    // Always export these headers
-    fputcsv($out, students_csv_headers());
+    // หัวคอลัมน์ตามฟอร์ม A–O (Email/Password เป็นสูตร)
+    fputcsv($out, students_form_headers());
 
+    $seq = 0;
     foreach ($rows as $r) {
+        $seq++;
+        $excelRow = $seq + 1; // แถวข้อมูลแรกอยู่ที่ Excel row 2
+
         fputcsv($out, [
-            (string)($r['id'] ?? ''),
-            (string)($r['student_code'] ?? ''),
-            (string)($r['roll_no'] ?? ''),
-            (string)($r['class_room'] ?? ''),
-            (string)($r['grade'] ?? ''),
-            (string)($r['room'] ?? ''),
-            (string)($r['full_name'] ?? ''),
-            (string)($r['first_name'] ?? ''),
-            (string)($r['last_name'] ?? ''),
+            (string)$seq,                                  // A ลำดับ
+            (string)($r['grade'] ?? ''),                   // B ชั้น
+            (string)($r['room'] ?? ''),                    // C ห้อง
+            (string)($r['roll_no'] ?? ''),                 // D เลขที่
+            (string)($r['status'] ?? ''),                  // E สถานะ
+            students_text_formula((string)($r['citizen_id'] ?? '')),    // F รหัสบัตรประชาชน (บังคับเป็นข้อความ)
+            students_text_formula((string)($r['student_code'] ?? '')),  // G รหัสนักศึกษา (บังคับเป็นข้อความ)
+            (string)($r['gender'] ?? ''),                  // H เพศ
+            (string)($r['title_prefix'] ?? ''),            // I คำนำหน้า
+            (string)($r['first_name'] ?? ''),              // J ชื่อ
+            (string)($r['last_name'] ?? ''),               // K นามสกุล
+            (string)($r['nickname'] ?? ''),                // L ชื่อเล่น
+            (string)($r['birth_date'] ?? ''),              // M วัน/เดือน/ปีเกิด
+            students_email_formula($excelRow),             // N Email (สูตร)
+            students_password_formula($excelRow),          // O Password (สูตร)
         ]);
     }
 

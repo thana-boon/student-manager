@@ -59,6 +59,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && $error === '') {
             $error = 'อัปโหลดไฟล์ไม่สำเร็จ (error=' . $err . ')';
         } else {
             try {
+                // กันไฟล์ใหญ่ทำงานเกิน timeout (เผื่อไว้ ปกติ import เร็วเพราะใช้ transaction แล้ว)
+                @set_time_limit(300);
+
                 $pdoSchool = db_pdo_school();
                 $result = students_import_csv($pdoSchool, (int)$currentYear['id'], (string)$currentYear['name'], $tmp, $updateExisting);
 
@@ -138,13 +141,13 @@ layout_topbar('students');
       <div class="rounded-xl border border-sky-200 bg-sky-50 px-4 py-3 text-sm text-sky-900">
         <div class="font-semibold">รูปแบบไฟล์ที่แนะนำ</div>
         <p class="mt-1 text-sky-800/90">กดปุ่มดาวน์โหลดไฟล์ตัวอย่าง แล้วเปิดด้วย Excel เพื่อกรอกข้อมูลได้เลย จากนั้นบันทึกเป็น CSV UTF-8 ก่อนนำเข้า</p>
-        <p class="mt-2 text-xs text-sky-700/90">รูปแบบที่แนะนำให้ตรงกับตารางหน้าแสดงผลคือ รหัสนักเรียน, ชั้น, ห้อง, เลขที่, ชื่อจริง, นามสกุล และรองรับเพิ่ม (ไม่บังคับ) เช่น เลขบัตรประชาชน, วันเดือนปีเกิด</p>
+        <p class="mt-2 text-xs text-sky-700/90">หัวคอลัมน์ตามฟอร์มใหม่: ลำดับ, ชั้น, ห้อง, เลขที่, สถานะ, รหัสบัตรประชาชน, รหัสนักศึกษา, เพศ, คำนำหน้า, ชื่อ, นามสกุล, ชื่อเล่น, วัน/เดือน/ปีเกิด (ช่อง Email/Password เป็นสูตร ระบบจะข้ามให้ตอนนำเข้า) — ยังรองรับหัวแบบเดิมเพื่อใช้กับไฟล์เก่าได้</p>
       </div>
 
       <div>
         <label class="mb-1 block text-sm text-slate-700">ไฟล์ CSV</label>
         <input type="file" name="csv" accept=".csv,text/csv" class="block w-full rounded-xl border border-slate-300 bg-white px-4 py-3 text-sm text-slate-900 file:mr-4 file:rounded-lg file:border file:border-slate-200 file:bg-slate-50 file:px-3 file:py-2 file:text-sm file:font-medium file:text-slate-700 hover:file:bg-slate-100" />
-        <p class="mt-2 text-xs text-slate-500">หัวคอลัมน์ที่รองรับแบบแนะนำคือ รหัสนักเรียน, ชั้น, ห้อง, เลขที่, ชื่อจริง, นามสกุล และยังรองรับหัวแบบเดิมเพื่อใช้กับไฟล์เก่าได้</p>
+        <p class="mt-2 text-xs text-slate-500">แนะนำให้กดดาวน์โหลดไฟล์ตัวอย่างเพื่อดูหัวคอลัมน์ที่ถูกต้อง แล้วบันทึกเป็น CSV UTF-8 ก่อนนำเข้า</p>
       </div>
 
       <label class="flex items-center gap-3 text-sm text-slate-700">

@@ -19,13 +19,25 @@ if ($out === false) {
     throw new RuntimeException('ไม่สามารถสร้างไฟล์ตัวอย่างได้');
 }
 
-$headers = students_import_display_headers();
+$headers = students_form_headers();
 fputcsv($out, $headers);
 
+$seq = 0;
 foreach (students_import_template_rows() as $row) {
+    $seq++;
+    $excelRow = $seq + 1; // แถวข้อมูลแรกอยู่ที่ Excel row 2
+
     $line = [];
     foreach ($headers as $header) {
-        $line[] = (string)($row[$header] ?? '');
+        if ($header === 'ลำดับ') {
+            $line[] = (string)$seq;
+        } elseif ($header === 'Email') {
+            $line[] = students_email_formula($excelRow);
+        } elseif ($header === 'Password') {
+            $line[] = students_password_formula($excelRow);
+        } else {
+            $line[] = (string)($row[$header] ?? '');
+        }
     }
     fputcsv($out, $line);
 }

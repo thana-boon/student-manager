@@ -61,7 +61,7 @@ try {
         if ($c === '') {
           continue;
         }
-        if ($c === 'citizen_id' || $c === 'birth_date') {
+        if (in_array($c, students_optional_field_names(), true)) {
           // Rendered as dedicated fields below
           continue;
         }
@@ -87,7 +87,7 @@ try {
   // load extra values from POST (if any)
   $extraPost = $_POST['extra'] ?? [];
   if (is_array($extraPost)) {
-    $allowed = array_flip(array_merge($extraColumns, ['citizen_id', 'birth_date']));
+    $allowed = array_flip(array_merge($extraColumns, students_optional_field_names()));
     foreach ($extraPost as $k => $v) {
       $k = (string)$k;
       if (!isset($allowed[$k])) {
@@ -269,9 +269,32 @@ layout_topbar('students');
             class="w-full rounded-xl border border-slate-300 bg-white px-4 py-2.5 text-slate-900 placeholder:text-slate-400 outline-none focus:border-blue-500 focus:ring-4 focus:ring-blue-500/10" />
         </div>
         <div>
-          <label class="mb-1 block text-sm text-slate-700">วันเดือนปีเกิด</label>
+          <label class="mb-1 block text-sm text-slate-700">วันเดือนปีเกิด (พ.ศ. ตามที่กรอก)</label>
           <input type="date" name="extra[birth_date]" value="<?= htmlspecialchars((string)($extraValues['birth_date'] ?? ''), ENT_QUOTES) ?>"
             class="w-full rounded-xl border border-slate-300 bg-white px-4 py-2.5 text-slate-900 outline-none focus:border-blue-500 focus:ring-4 focus:ring-blue-500/10" />
+        </div>
+      </div>
+
+      <div class="grid gap-4 sm:grid-cols-2">
+        <div>
+          <label class="mb-1 block text-sm text-slate-700">คำนำหน้า</label>
+          <input name="extra[title_prefix]" value="<?= htmlspecialchars((string)($extraValues['title_prefix'] ?? ''), ENT_QUOTES) ?>" placeholder="เช่น นาย, เด็กชาย, นางสาว"
+            class="w-full rounded-xl border border-slate-300 bg-white px-4 py-2.5 text-slate-900 placeholder:text-slate-400 outline-none focus:border-blue-500 focus:ring-4 focus:ring-blue-500/10" />
+        </div>
+        <div>
+          <label class="mb-1 block text-sm text-slate-700">เพศ</label>
+          <input name="extra[gender]" value="<?= htmlspecialchars((string)($extraValues['gender'] ?? ''), ENT_QUOTES) ?>" placeholder="เช่น ชาย, หญิง"
+            class="w-full rounded-xl border border-slate-300 bg-white px-4 py-2.5 text-slate-900 placeholder:text-slate-400 outline-none focus:border-blue-500 focus:ring-4 focus:ring-blue-500/10" />
+        </div>
+        <div>
+          <label class="mb-1 block text-sm text-slate-700">ชื่อเล่น</label>
+          <input name="extra[nickname]" value="<?= htmlspecialchars((string)($extraValues['nickname'] ?? ''), ENT_QUOTES) ?>"
+            class="w-full rounded-xl border border-slate-300 bg-white px-4 py-2.5 text-slate-900 placeholder:text-slate-400 outline-none focus:border-blue-500 focus:ring-4 focus:ring-blue-500/10" />
+        </div>
+        <div>
+          <label class="mb-1 block text-sm text-slate-700">สถานะ</label>
+          <input name="extra[status]" value="<?= htmlspecialchars((string)($extraValues['status'] ?? ''), ENT_QUOTES) ?>" placeholder="เช่น กำลังศึกษา"
+            class="w-full rounded-xl border border-slate-300 bg-white px-4 py-2.5 text-slate-900 placeholder:text-slate-400 outline-none focus:border-blue-500 focus:ring-4 focus:ring-blue-500/10" />
         </div>
       </div>
 

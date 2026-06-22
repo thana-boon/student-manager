@@ -132,9 +132,16 @@ function students_detect_columns(PDO $pdo): array
     ];
 }
 
-function students_columns_meta(PDO $pdo): array
+function students_columns_meta(PDO $pdo, bool $fresh = false): array
 {
+    static $cache = [];
+
     $table = students_table_name();
+
+    // โครงสร้างตารางไม่เปลี่ยนระหว่าง request เดียว -> cache ไว้ ไม่ query information_schema ซ้ำทุกแถวตอน import
+    if (!$fresh && isset($cache[$table])) {
+        return $cache[$table];
+    }
 
     $stmt = $pdo->prepare(
         'SELECT column_name, data_type, column_type, is_nullable, column_default, column_key, extra, character_maximum_length, numeric_precision, numeric_scale '
@@ -166,6 +173,7 @@ function students_columns_meta(PDO $pdo): array
         ];
     }
 
+    $cache[$table] = $out;
     return $out;
 }
 
@@ -356,15 +364,43 @@ function students_add_column_if_missing(PDO $pdo, string $column, string $defini
     $c = students_sql_ident($column);
 
     $pdo->exec('ALTER TABLE ' . $t . ' ADD COLUMN ' . $c . ' ' . $definitionSql);
+
+    // refresh column meta cache เพราะโครงสร้างตารางเปลี่ยน
+    students_columns_meta($pdo, true);
     return true;
 }
 
 function students_ensure_optional_columns(PDO $pdo): void
 {
     // User-requested optional fields.
-    // Safe: only adds if missing; columns are nullable.
+    // Safe: only adds if missing; columns are nullable (additive, ไม่กระทบ API/ข้อมูลเดิม).
     students_add_column_if_missing($pdo, 'citizen_id', 'VARCHAR(13) NULL');
     students_add_column_if_missing($pdo, 'birth_date', 'DATE NULL');
+    students_add_column_if_missing($pdo, 'status', 'VARCHAR(50) NULL');
+    students_add_column_if_missing($pdo, 'gender', 'VARCHAR(20) NULL');
+    students_add_column_if_missing($pdo, 'title_prefix', 'VARCHAR(50) NULL');
+    students_add_column_if_missing($pdo, 'nickname', 'VARCHAR(100) NULL');
+}
+
+/**
+ * Optional/extra columns (เก็บเพิ่มแต่ไม่ใช่ core mapping).
+ * ใช้ชื่อร่วมกันระหว่าง import, export และฟอร์ม.
+ */
+function students_optional_field_names(): array
+{
+    return ['citizen_id', 'birth_date', 'status', 'gender', 'title_prefix', 'nickname'];
+}
+
+function students_optional_fields_present(array $m): array
+{
+    $cols = array_flip(array_map('strval', (array)($m['columns'] ?? [])));
+    $out = [];
+    foreach (students_optional_field_names() as $n) {
+        if (isset($cols[$n])) {
+            $out[] = $n;
+        }
+    }
+    return $out;
 }
 
 function students_require_table(PDO $pdo): array
@@ -941,17 +977,20 @@ function students_normalize_csv_header(string $h): string
         'student_no' => 'student_code',
         'student_number' => 'student_code',
         'รหัสนักเรียน' => 'student_code',
+        'รหัสนักศึกษา' => 'student_code',
         'รหัสประจำตัว' => 'student_code',
 
         'name' => 'full_name',
         'full_name' => 'full_name',
         'student_name' => 'full_name',
-        'ชื่อ' => 'full_name',
         'ชื่อสกุล' => 'full_name',
+        'ชื่อ_สกุล' => 'full_name',
 
         'first_name' => 'first_name',
         'firstname' => 'first_name',
         'ชื่อจริง' => 'first_name',
+        // ฟอร์มใหม่แยกช่อง ชื่อ / นามสกุล จึงถือว่า "ชื่อ" = ชื่อจริง
+        'ชื่อ' => 'first_name',
 
         'last_name' => 'last_name',
         'lastname' => 'last_name',
@@ -987,6 +1026,7 @@ function students_normalize_csv_header(string $h): string
         'national_id' => 'citizen_id',
         'id_card' => 'citizen_id',
         'เลขบัตรประชาชน' => 'citizen_id',
+        'รหัสบัตรประชาชน' => 'citizen_id',
         'บัตรประชาชน' => 'citizen_id',
 
         'birth_date' => 'birth_date',
@@ -994,7 +1034,29 @@ function students_normalize_csv_header(string $h): string
         'dob' => 'birth_date',
         'date_of_birth' => 'birth_date',
         'วันเดือนปีเกิด' => 'birth_date',
+        'วัน/เดือน/ปีเกิด' => 'birth_date',
         'วันเกิด' => 'birth_date',
+
+        'status' => 'status',
+        'student_status' => 'status',
+        'สถานะ' => 'status',
+        'สถานภาพ' => 'status',
+
+        'gender' => 'gender',
+        'sex' => 'gender',
+        'เพศ' => 'gender',
+
+        'title_prefix' => 'title_prefix',
+        'title' => 'title_prefix',
+        'prefix' => 'title_prefix',
+        'name_title' => 'title_prefix',
+        'คำนำหน้า' => 'title_prefix',
+        'คำนำหน้าชื่อ' => 'title_prefix',
+
+        'nickname' => 'nickname',
+        'nick_name' => 'nickname',
+        'nick' => 'nickname',
+        'ชื่อเล่น' => 'nickname',
     ];
 
     return $map[$h] ?? $h;
@@ -1049,6 +1111,13 @@ function students_import_csv(PDO $pdo, int $yearId, string $yearName, string $tm
     $errors = [];
     $rowNo = 1;
 
+    // ครอบทั้งไฟล์ด้วย transaction เดียว: เลี่ยง autocommit/disk-sync ต่อแถว (เร็วขึ้นหลายเท่า)
+    $ownTransaction = !$pdo->inTransaction();
+    if ($ownTransaction) {
+        $pdo->beginTransaction();
+    }
+
+    try {
     while (($row = fgetcsv($fh)) !== false) {
         $rowNo++;
 
@@ -1071,6 +1140,19 @@ function students_import_csv(PDO $pdo, int $yearId, string $yearName, string $tm
         $last = trim((string)($data['last_name'] ?? ''));
         $citizenId = trim((string)($data['citizen_id'] ?? ''));
         $birthDate = students_normalize_birth_date((string)($data['birth_date'] ?? ''));
+        $status = trim((string)($data['status'] ?? ''));
+        $gender = trim((string)($data['gender'] ?? ''));
+        $titlePrefix = trim((string)($data['title_prefix'] ?? ''));
+        $nickname = trim((string)($data['nickname'] ?? ''));
+
+        // เก็บเฉพาะค่าที่ไม่ว่าง เพื่อไม่ไปทับค่าเดิมตอน update
+        $extraFromRow = [];
+        if ($citizenId !== '') { $extraFromRow['citizen_id'] = $citizenId; }
+        if ($birthDate !== '') { $extraFromRow['birth_date'] = $birthDate; }
+        if ($status !== '') { $extraFromRow['status'] = $status; }
+        if ($gender !== '') { $extraFromRow['gender'] = $gender; }
+        if ($titlePrefix !== '') { $extraFromRow['title_prefix'] = $titlePrefix; }
+        if ($nickname !== '') { $extraFromRow['nickname'] = $nickname; }
 
         if ($fullName === '' && ($first !== '' || $last !== '')) {
             $fullName = trim($first . ' ' . $last);
@@ -1101,10 +1183,7 @@ function students_import_csv(PDO $pdo, int $yearId, string $yearName, string $tm
                         if ($first !== '') { $u['first_name'] = $first; }
                         if ($last !== '') { $u['last_name'] = $last; }
 
-                        $extra = [];
-                        if ($citizenId !== '') { $extra['citizen_id'] = $citizenId; }
-                        if ($birthDate !== '') { $extra['birth_date'] = $birthDate; }
-                        if (count($extra) > 0) { $u['extra'] = $extra; }
+                        if (count($extraFromRow) > 0) { $u['extra'] = $extraFromRow; }
 
                         students_update($pdo, $m, (int)($existing[$m['id']] ?? 0), $u);
                         $updated++;
@@ -1127,10 +1206,7 @@ function students_import_csv(PDO $pdo, int $yearId, string $yearName, string $tm
                         if ($first !== '') { $u['first_name'] = $first; }
                         if ($last !== '') { $u['last_name'] = $last; }
 
-                        $extra = [];
-                        if ($citizenId !== '') { $extra['citizen_id'] = $citizenId; }
-                        if ($birthDate !== '') { $extra['birth_date'] = $birthDate; }
-                        if (count($extra) > 0) { $u['extra'] = $extra; }
+                        if (count($extraFromRow) > 0) { $u['extra'] = $extraFromRow; }
 
                         students_update($pdo, $m, $idFromCsv, $u);
                         $updated++;
@@ -1148,15 +1224,23 @@ function students_import_csv(PDO $pdo, int $yearId, string $yearName, string $tm
                 'full_name' => $fullName,
                 'first_name' => $first,
                 'last_name' => $last,
-                'extra' => [
-                    'citizen_id' => $citizenId,
-                    'birth_date' => $birthDate,
-                ],
+                'extra' => $extraFromRow,
             ]);
             $inserted++;
         } catch (Throwable $e) {
             $errors[] = 'แถว ' . $rowNo . ': ' . $e->getMessage();
         }
+    }
+    } catch (Throwable $e) {
+        if ($ownTransaction && $pdo->inTransaction()) {
+            $pdo->rollBack();
+        }
+        fclose($fh);
+        throw $e;
+    }
+
+    if ($ownTransaction && $pdo->inTransaction()) {
+        $pdo->commit();
     }
 
     fclose($fh);
@@ -1260,33 +1344,108 @@ function students_delete_by_csv(PDO $pdo, int $yearId, string $yearName, string 
     ];
 }
 
-function students_import_display_headers(): array
+/**
+ * หัวคอลัมน์มาตรฐานของฟอร์มนักเรียน (ใช้ร่วมกันทั้ง import template และ export)
+ * ลำดับคอลัมน์ A–O ตรงตามฟอร์ม (ช่อง Email/Password เป็นสูตร Excel)
+ */
+function students_form_headers(): array
 {
-    return ['รหัสนักเรียน', 'ชั้น', 'ห้อง', 'เลขที่', 'ชื่อจริง', 'นามสกุล', 'เลขบัตรประชาชน', 'วันเดือนปีเกิด'];
+    return [
+        'ลำดับ',            // A
+        'ชั้น',             // B
+        'ห้อง',             // C
+        'เลขที่',           // D
+        'สถานะ',            // E
+        'รหัสบัตรประชาชน',  // F
+        'รหัสนักศึกษา',     // G
+        'เพศ',              // H
+        'คำนำหน้า',         // I
+        'ชื่อ',             // J
+        'นามสกุล',          // K
+        'ชื่อเล่น',          // L
+        'วัน/เดือน/ปีเกิด', // M
+        'Email',            // N (สูตร)
+        'Password',         // O (สูตร)
+    ];
+}
+
+/**
+ * บังคับให้ Excel เก็บค่าเป็น "ข้อความ" ด้วยสูตร ="..."
+ * ป้องกันรหัสบัตรประชาชน/รหัสนักศึกษากลายเป็น scientific notation และ 0 นำหน้าหาย
+ * คืนค่าว่าง (ไม่ใช่สูตร) ถ้าค่าว่าง เพื่อให้สูตร Email/Password ตรวจ <>"" ได้ถูกต้อง
+ */
+function students_text_formula(string $v): string
+{
+    if ($v === '') {
+        return '';
+    }
+    // escape " ภายในค่าเป็น "" ตามไวยากรณ์สูตร Excel
+    return '="' . str_replace('"', '""', $v) . '"';
+}
+
+/**
+ * สูตร Excel สำหรับช่อง Email (อ้างอิงคอลัมน์ G = รหัสนักศึกษา)
+ * @param int $excelRow แถวจริงใน Excel (แถวข้อมูลแรก = 2)
+ */
+function students_email_formula(int $excelRow): string
+{
+    return '=IF(G' . $excelRow . '<>"",G' . $excelRow . '&"@sukhon.ac.th","")';
+}
+
+/**
+ * สูตร Excel สำหรับช่อง Password (อ้างอิงคอลัมน์ F = รหัสบัตรประชาชน)
+ * @param int $excelRow แถวจริงใน Excel (แถวข้อมูลแรก = 2)
+ */
+function students_password_formula(int $excelRow): string
+{
+    return '=IF(F' . $excelRow . '<>"","Skdw"&F' . $excelRow . ',"")';
+}
+
+/**
+ * แปลงวันเกิดที่เก็บใน DB (YYYY-MM-DD, ปี พ.ศ. ตามที่กรอก) -> dd/mm/yyyy สำหรับแสดง/ส่งออก
+ */
+function students_birth_date_to_display(string $v): string
+{
+    $v = trim($v);
+    if ($v === '') {
+        return '';
+    }
+    if (preg_match('/^(\d{4})-(\d{2})-(\d{2})/', $v, $m)) {
+        return $m[3] . '/' . $m[2] . '/' . $m[1];
+    }
+    return $v;
 }
 
 function students_import_template_rows(): array
 {
     return [
         [
-            'รหัสนักเรียน' => '6271',
-            'ชั้น' => 'ม.1',
-            'ห้อง' => '1',
+            'ชั้น' => 'ม.4',
+            'ห้อง' => '3',
             'เลขที่' => '1',
-            'ชื่อจริง' => 'ธีรภาณุ',
-            'นามสกุล' => 'สุดล้ำเลิศ',
-            'เลขบัตรประชาชน' => '',
-            'วันเดือนปีเกิด' => '',
+            'สถานะ' => 'กำลังศึกษา',
+            'รหัสบัตรประชาชน' => '1234567890123',
+            'รหัสนักศึกษา' => '10001',
+            'เพศ' => 'ชาย',
+            'คำนำหน้า' => 'นาย',
+            'ชื่อ' => 'สมชาย',
+            'นามสกุล' => 'ใจดี',
+            'ชื่อเล่น' => 'ชาย',
+            'วัน/เดือน/ปีเกิด' => '01/01/2550',
         ],
         [
-            'รหัสนักเรียน' => '6555',
-            'ชั้น' => 'ม.1',
-            'ห้อง' => '1',
+            'ชั้น' => 'ม.4',
+            'ห้อง' => '3',
             'เลขที่' => '2',
-            'ชื่อจริง' => 'อรวีรัชญ์',
-            'นามสกุล' => 'มูลทรัพย์',
-            'เลขบัตรประชาชน' => '',
-            'วันเดือนปีเกิด' => '',
+            'สถานะ' => 'กำลังศึกษา',
+            'รหัสบัตรประชาชน' => '',
+            'รหัสนักศึกษา' => '10002',
+            'เพศ' => 'หญิง',
+            'คำนำหน้า' => 'นางสาว',
+            'ชื่อ' => 'สมหญิง',
+            'นามสกุล' => 'รักเรียน',
+            'ชื่อเล่น' => 'หญิง',
+            'วัน/เดือน/ปีเกิด' => '02/03/2550',
         ],
     ];
 }
@@ -1354,4 +1513,61 @@ function students_export_rows(PDO $pdo, int $yearId, string $yearName): array
     $stmt = $pdo->prepare("SELECT $select FROM $t WHERE $where ORDER BY $idCol ASC");
     $stmt->execute($params);
     return $stmt->fetchAll(PDO::FETCH_ASSOC);
+}
+
+/**
+ * แถวข้อมูลสำหรับ export ตามฟอร์มในภาพ (เรียงตาม ชั้น/ห้อง/เลขที่ เหมือนหน้า list)
+ * คืนค่า key: grade, room, roll_no, status, citizen_id, student_code, gender,
+ * title_prefix, first_name, last_name, nickname, birth_date
+ */
+function students_export_form_rows(PDO $pdo, int $yearId, string $yearName): array
+{
+    // ใช้ list_by_year เพื่อให้ได้ลำดับเรียง (ชั้น -> ห้อง -> เลขที่) และ first/last/grade/room ที่ parse แล้ว
+    $base = students_list_by_year($pdo, $yearId, $yearName);
+
+    $m = students_require_table($pdo);
+    $optionalCols = students_optional_fields_present($m);
+
+    // ดึงค่าฟิลด์ optional ทั้งหมด แล้ว map ตาม id
+    $optionalById = [];
+    if (count($optionalCols) > 0) {
+        [$where, $params] = students_year_where($m, $yearId, $yearName);
+        $t = students_sql_ident((string)$m['table']);
+        $idCol = students_sql_ident((string)$m['id']);
+
+        $selectParts = ["$idCol AS id"];
+        foreach ($optionalCols as $c) {
+            $selectParts[] = students_sql_ident($c) . ' AS ' . students_sql_ident($c);
+        }
+        $select = implode(', ', $selectParts);
+
+        $stmt = $pdo->prepare("SELECT $select FROM $t WHERE $where");
+        $stmt->execute($params);
+        foreach ($stmt->fetchAll(PDO::FETCH_ASSOC) as $r) {
+            $optionalById[(int)($r['id'] ?? 0)] = $r;
+        }
+    }
+
+    $out = [];
+    foreach ($base as $r) {
+        $id = (int)($r['id'] ?? 0);
+        $opt = $optionalById[$id] ?? [];
+
+        $out[] = [
+            'grade'        => (string)($r['grade'] ?? ''),
+            'room'         => (string)($r['room'] ?? ''),
+            'roll_no'      => (string)($r['roll_no'] ?? ''),
+            'status'       => (string)($opt['status'] ?? ''),
+            'citizen_id'   => (string)($opt['citizen_id'] ?? ''),
+            'student_code' => (string)($r['student_code'] ?? ''),
+            'gender'       => (string)($opt['gender'] ?? ''),
+            'title_prefix' => (string)($opt['title_prefix'] ?? ''),
+            'first_name'   => (string)($r['first_name'] ?? ''),
+            'last_name'    => (string)($r['last_name'] ?? ''),
+            'nickname'     => (string)($opt['nickname'] ?? ''),
+            'birth_date'   => students_birth_date_to_display((string)($opt['birth_date'] ?? '')),
+        ];
+    }
+
+    return $out;
 }
