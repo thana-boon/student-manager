@@ -22,3 +22,6 @@ Desktop.ini
 # Uploads / temp
 *.tmp
 *.bak
+
+# Database dumps (มีข้อมูลนักเรียนจริง / password hash / API keys — ห้ามขึ้น git)
+docker/db-init/*.sql

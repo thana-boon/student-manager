@@ -1,0 +1,49 @@
+services:
+  db:
+    image: mariadb:10.11
+    restart: unless-stopped
+    environment:
+      MARIADB_ROOT_PASSWORD: ${DB_ROOT_PASSWORD:-changeme}
+    ports:
+      # เปิดที่ 3307 บน host เพื่อไม่ชนกับ XAMPP MySQL (3306) ที่มีอยู่แล้ว
+      - "3307:3306"
+    volumes:
+      - db_data:/var/lib/mysql
+      # ไฟล์ .sql ในโฟลเดอร์นี้จะถูก import อัตโนมัติ "เฉพาะครั้งแรก" ที่ volume ยังว่าง
+      - ./docker/db-init:/docker-entrypoint-initdb.d:ro
+    healthcheck:
+      test: ["CMD", "healthcheck.sh", "--connect", "--innodb_initialized"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 30s
+
+  web:
+    build: .
+    restart: unless-stopped
+    depends_on:
+      db:
+        condition: service_healthy
+    ports:
+      - "8080:80"
+    environment:
+      # ค่าเหล่านี้ override .env ผ่าน getenv() ในไฟล์ config.php
+      DB_HOST: db
+      DB_PORT: "3306"
+      DB_NAME: student_manager
+      DB_USER: root
+      DB_PASS: ${DB_ROOT_PASSWORD:-changeme}
+      DB_CHARSET: utf8mb4
+
+      DB_SCHOOL_HOST: db
+      DB_SCHOOL_PORT: "3306"
+      DB_SCHOOL_NAME: students_db
+      DB_SCHOOL_USER: root
+      DB_SCHOOL_PASS: ${DB_ROOT_PASSWORD:-changeme}
+      DB_SCHOOL_CHARSET: utf8mb4
+
+      APP_NAME: "Student Manager"
+      APP_TIMEZONE: Asia/Bangkok
+
+volumes:
+  db_data:

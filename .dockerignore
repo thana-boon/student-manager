@@ -1,0 +1,22 @@
+# git / secrets
+.git
+.gitignore
+.env
+.env.*
+!.env.example
+
+# ไม่ต้อง bake DB dump เข้า web image (ใช้ผ่าน bind mount ที่ service db)
+docker/db-init
+
+# logs / cache / editor
+storage/logs/*.log
+storage/cache
+.vscode
+.idea
+
+# temp
+*.tmp
+*.bak
+Thumbs.db
+Desktop.ini
+.DS_Store
